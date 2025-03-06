@@ -121,6 +121,91 @@ The integration consists of:
    - Azure will pull the container image from GitHub Container Registry
    - The application will be available at your Azure Web App URL
 
+### Azure CLI Deployment (Automated Method)
+
+For a streamlined deployment process, you can use the following Azure CLI script:
+
+1. Save this script to a file (e.g., `deploy-clickup-integration.sh`):
+
+```bash
+#!/bin/bash
+
+# Set all variables with your values
+SUBSCRIPTION="your-subscription-id"
+RESOURCE_GROUP="ClickUP_API"
+LOCATION="centralus"
+APP_NAME="clickup-api"
+ENVIRONMENT_NAME="managedEnvironment-ClickUPAPI"
+GITHUB_USERNAME="bismillahtechai"
+GITHUB_TOKEN="your-github-token"
+IMAGE="ghcr.io/bismillahtechai/clickup-typingmind-integration:1.0.0"
+
+# Generate secure keys or use your own
+API_KEYS="your-generated-api-key"
+TOKEN_ENCRYPTION_KEY="your-encryption-key"
+CLICKUP_API_TOKEN="your-clickup-api-token"
+
+# Set subscription
+az account set --subscription $SUBSCRIPTION
+
+# Create resource group if it doesn't exist
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# Create Container App Environment
+az containerapp env create \
+  --name $ENVIRONMENT_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Create Container App
+az containerapp create \
+  --name $APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --environment $ENVIRONMENT_NAME \
+  --image $IMAGE \
+  --registry-server "ghcr.io" \
+  --registry-username $GITHUB_USERNAME \
+  --registry-password $GITHUB_TOKEN \
+  --env-vars "PORT=3000" "NODE_ENV=production" "API_KEYS=$API_KEYS" "CLICKUP_API_TOKEN=$CLICKUP_API_TOKEN" "TOKEN_ENCRYPTION_KEY=$TOKEN_ENCRYPTION_KEY" "MAX_TASKS_LIMIT=100" \
+  --target-port 3000 \
+  --ingress external \
+  --min-replicas 1 \
+  --max-replicas 3
+
+# Get the deployed URL
+APP_URL=$(az containerapp show --name $APP_NAME --resource-group $RESOURCE_GROUP --query properties.configuration.ingress.fqdn -o tsv)
+
+echo "=========================================================================="
+echo "DEPLOYMENT COMPLETE!"
+echo "=========================================================================="
+echo "Your Container App is deployed at: https://$APP_URL"
+echo ""
+echo "IMPORTANT: Save these details for TypingMind configuration:"
+echo "------------------------------------------------------------------------"
+echo "URL for TypingMind: https://$APP_URL/context/clickup"
+echo "API Key: $API_KEYS"
+echo "Example full URL: https://$APP_URL/context/clickup?workspaceId={WORKSPACE_ID}&dataType=tasks&limit=10&api_key=$API_KEYS"
+echo "=========================================================================="
+```
+
+2. Before running the script:
+   - Replace placeholders with your actual values
+   - For API keys, you can generate secure random keys using: `openssl rand -hex 16`
+   - Ensure you have the Azure CLI installed and are logged in
+
+3. Make the script executable and run it:
+   ```bash
+   chmod +x deploy-clickup-integration.sh
+   ./deploy-clickup-integration.sh
+   ```
+
+4. After deployment:
+   - The script will output the URL for your deployed application
+   - It will also provide the full URL format for TypingMind configuration
+   - Save your API key for use with TypingMind
+
+This automated method handles resource creation, configuration, and deployment in a single script, making it easier to redeploy if needed.
+
 ## Deployment on Render
 
 1. Create a new Web Service on Render
@@ -145,7 +230,35 @@ The integration consists of:
    - Endpoint URL: `https://your-deployed-url.com/context/clickup?workspaceId={WORKSPACE_ID}&dataType=tasks&limit=10&api_key={API_KEY}`
    - Enable Cache: Optional (recommended for better performance)
 
-### Step 2: Register ClickUp Token
+### Step 2: Generate API Keys
+
+To secure your integration, you need to generate API keys that will authorize requests between TypingMind and your integration:
+
+1. **Using OpenSSL (Recommended)**:
+   ```bash
+   # Generate a 32-character random hexadecimal string
+   openssl rand -hex 16
+   # Example output: 8f742a07e368b5624ae9591fa95e6617
+   ```
+
+2. **Using Online UUID Generator**:
+   - Visit https://www.uuidgenerator.net/
+   - Use the generated UUID (remove hyphens if desired)
+
+3. **Creating Your Own Format**:
+   - Follow a pattern like: `api_[yourname]_[randomstring]_[timestamp]`
+   - Example: `api_bismillah_a7f3bc92_20240306`
+
+4. **Add to Environment Variables**:
+   - Add your generated key(s) to the `API_KEYS` environment variable in your deployment
+   - If using multiple keys, separate them with commas
+   - Example: `API_KEYS=8f742a07e368b5624ae9591fa95e6617,f47ac10b58cc4372a5670e02b2c3d479`
+
+5. **Use in TypingMind Configuration**:
+   - When configuring Dynamic Context in TypingMind, include your API key in the URL
+   - Example: `https://your-deployed-url.com/context/clickup?workspaceId={WORKSPACE_ID}&dataType=tasks&limit=10&api_key=8f742a07e368b5624ae9591fa95e6617`
+
+### Step 3: Register ClickUp Token
 
 Before using the integration, you need to register your ClickUp API token:
 
