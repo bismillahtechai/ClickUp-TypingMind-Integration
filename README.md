@@ -63,6 +63,64 @@ The integration consists of:
    docker-compose up -d
    ```
 
+### GitHub Container Registry Deployment
+
+1. Build the Docker image:
+   ```bash
+   docker build -t clickup-typingmind-integration:1.0.0 -f docker/Dockerfile .
+   ```
+
+2. Tag the image for GitHub Container Registry:
+   ```bash
+   docker tag clickup-typingmind-integration:1.0.0 ghcr.io/bismillahtechai/clickup-typingmind-integration:1.0.0
+   ```
+
+3. Authenticate with GitHub Container Registry:
+   ```bash
+   # Login with your GitHub username and personal access token
+   echo $GITHUB_TOKEN | docker login ghcr.io -u bismillahtechai --password-stdin
+   ```
+
+4. Push the image to GitHub Container Registry:
+   ```bash
+   docker push ghcr.io/bismillahtechai/clickup-typingmind-integration:1.0.0
+   ```
+
+5. Make your package public (optional):
+   - Go to your GitHub profile → Packages
+   - Select your package
+   - Go to Package settings
+   - Change visibility to "Public"
+
+### Azure Deployment
+
+1. Set up an Azure Web App:
+   - Create a new Web App in the Azure Portal
+   - Select "Docker Container" as the publish method
+   - Choose "Single Container" as the container type
+
+2. Configure the container settings:
+   - Repository source: Docker Hub or other registries
+   - Image: clickup-typingmind-integration
+   - Login server URL: ghcr.io
+   - Username: bismillahtechai
+   - Password: your GitHub Personal Access Token
+   - Dockerfile location: docker/Dockerfile
+
+3. Configure environment variables:
+   - In the "Configuration" section, add the following Application settings:
+     - `PORT`: 3000
+     - `NODE_ENV`: production
+     - `API_KEYS`: Your comma-separated list of API keys
+     - `CLICKUP_API_TOKEN`: Your ClickUp API token (starts with `pk_`)
+     - `TYPINGMIND_API_ENDPOINT`: The TypingMind API endpoint URL
+     - `TOKEN_ENCRYPTION_KEY`: A secure key for encrypting stored tokens
+     - `MAX_TASKS_LIMIT`: Optional, maximum number of tasks to retrieve (default: 100)
+
+4. Deploy the container:
+   - Azure will pull the container image from GitHub Container Registry
+   - The application will be available at your Azure Web App URL
+
 ## Deployment on Render
 
 1. Create a new Web Service on Render
@@ -145,3 +203,50 @@ Headers:
 ## License
 
 MIT 
+
+## Troubleshooting & Maintenance
+
+### Common Issues
+
+1. **Authentication Failures**:
+   - Verify API keys are correctly set in environment variables
+   - Ensure the ClickUp token is valid and has the necessary permissions
+   - Check for typos in the API keys or tokens
+
+2. **Container Issues**:
+   - Verify the container is running: `docker ps`
+   - Check container logs: `docker logs [container-id]`
+   - Ensure the container has network access to ClickUp API
+
+3. **Azure Deployment Issues**:
+   - Check Application Logs in the Azure Portal
+   - Verify environment variables are correctly set
+   - Ensure the container is being pulled from the correct registry
+   - Check "Diagnose and solve problems" in Azure for common solutions
+
+4. **TypingMind Integration Issues**:
+   - Verify the endpoint URL in TypingMind settings
+   - Check that your API endpoint is accessible from TypingMind's servers
+   - Verify your firewall isn't blocking requests
+
+### Updating the Application
+
+To update to a new version:
+
+1. Make your code changes
+2. Build and tag a new Docker image with an updated version number:
+   ```bash
+   docker build -t clickup-typingmind-integration:1.0.1 -f docker/Dockerfile .
+   docker tag clickup-typingmind-integration:1.0.1 ghcr.io/bismillahtechai/clickup-typingmind-integration:1.0.1
+   ```
+3. Push the new image:
+   ```bash
+   docker push ghcr.io/bismillahtechai/clickup-typingmind-integration:1.0.1
+   ```
+4. Update your Azure deployment to use the new tag
+
+### Monitoring
+
+- Set up Azure Application Insights for monitoring
+- Use Azure Log Analytics for log management
+- Configure alerts for critical errors or performance issues 
