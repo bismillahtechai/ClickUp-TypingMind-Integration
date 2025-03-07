@@ -5,11 +5,18 @@
  * in a database with proper encryption
  */
 
+const { getLogger } = require('./logger');
+const logger = getLogger('token-manager');
+
 // In-memory token storage (for demo purposes only)
 // In production, this should be replaced with a secure database solution
 const tokens = new Map();
 
 class TokenManager {
+  constructor() {
+    logger.info('TokenManager initialized');
+  }
+  
   /**
    * Store a user's ClickUp API token
    * @param {string} userId The user ID
@@ -17,14 +24,17 @@ class TokenManager {
    */
   storeToken(userId, token) {
     if (!userId) {
+      logger.error('Cannot store token: User ID is required');
       throw new Error('User ID is required');
     }
     
     if (!token || !token.startsWith('pk_')) {
+      logger.error(`Invalid token format provided for user ${userId}`);
       throw new Error('Invalid ClickUp API token format. Token should start with "pk_"');
     }
     
     tokens.set(userId, token);
+    logger.info(`Token stored for user ${userId}`);
     return true;
   }
   
@@ -35,10 +45,18 @@ class TokenManager {
    */
   getToken(userId) {
     if (!userId) {
+      logger.warn('getToken called without userId');
       return null;
     }
     
-    return tokens.get(userId) || null;
+    const token = tokens.get(userId);
+    if (!token) {
+      logger.warn(`No token found for user ${userId}`);
+    } else {
+      logger.debug(`Retrieved token for user ${userId}`);
+    }
+    
+    return token || null;
   }
   
   /**
@@ -47,7 +65,9 @@ class TokenManager {
    * @returns {boolean} True if the token exists, false otherwise
    */
   hasToken(userId) {
-    return tokens.has(userId);
+    const hasToken = tokens.has(userId);
+    logger.debug(`Checking token existence for user ${userId}: ${hasToken ? 'Found' : 'Not found'}`);
+    return hasToken;
   }
   
   /**
@@ -57,10 +77,13 @@ class TokenManager {
    */
   removeToken(userId) {
     if (!userId) {
+      logger.warn('removeToken called without userId');
       return false;
     }
     
-    return tokens.delete(userId);
+    const removed = tokens.delete(userId);
+    logger.info(`Token ${removed ? 'removed' : 'not found'} for user ${userId}`);
+    return removed;
   }
   
   /**
@@ -69,7 +92,27 @@ class TokenManager {
    * @returns {boolean} True if the token format is valid
    */
   isValidTokenFormat(token) {
-    return !!token && token.startsWith('pk_') && token.length > 5;
+    const isValid = !!token && token.startsWith('pk_') && token.length > 5;
+    logger.debug(`Token format validation: ${isValid ? 'Valid' : 'Invalid'}`);
+    return isValid;
+  }
+  
+  /**
+   * Get all user IDs with stored tokens
+   * @returns {string[]} Array of user IDs
+   */
+  getAllUserIds() {
+    const userIds = Array.from(tokens.keys());
+    logger.debug(`Retrieved ${userIds.length} user IDs`);
+    return userIds;
+  }
+  
+  /**
+   * Get count of stored tokens
+   * @returns {number} Number of stored tokens
+   */
+  getTokenCount() {
+    return tokens.size;
   }
 }
 

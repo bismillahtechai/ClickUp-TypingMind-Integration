@@ -2,20 +2,36 @@
  * Authentication middleware for validating API access
  */
 
-const { tokenManager } = require('../utils/token-manager');
+const { getLogger } = require('../utils/logger');
+const logger = getLogger('auth');
 
 // Load API keys from environment or configuration
 // In production, use a secure method for storing these keys
 const API_KEYS = process.env.API_KEYS ? process.env.API_KEYS.split(',') : ['dev-key-123']; // Default dev key
 
+// Log API key configuration at startup
+logger.info(`Loaded ${API_KEYS.length} API keys from configuration`);
+
 /**
  * Middleware to validate the TypingMind API key
  */
 function validateApiKey(req, res, next) {
-  // Get the API key from the request headers
+  // Get the API key from the request headers or query parameters
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
   
+  logger.debug('Validating API key', { 
+    hasApiKey: !!apiKey, 
+    requestPath: req.path,
+    requestId: req.requestId
+  });
+  
   if (!apiKey) {
+    logger.warn('API key validation failed: No API key provided', { 
+      requestPath: req.path,
+      ip: req.ip,
+      requestId: req.requestId
+    });
+    
     return res.status(401).json({ 
       error: 'Unauthorized', 
       message: 'API key is required' 
@@ -24,6 +40,13 @@ function validateApiKey(req, res, next) {
   
   // Check if the API key is valid
   if (!API_KEYS.includes(apiKey)) {
+    logger.warn('API key validation failed: Invalid API key provided', { 
+      requestPath: req.path,
+      ip: req.ip,
+      requestId: req.requestId,
+      apiKeyLength: apiKey ? apiKey.length : 0
+    });
+    
     return res.status(401).json({ 
       error: 'Unauthorized', 
       message: 'Invalid API key' 
@@ -31,6 +54,11 @@ function validateApiKey(req, res, next) {
   }
   
   // API key is valid, proceed
+  logger.debug('API key validation successful', { 
+    requestPath: req.path,
+    requestId: req.requestId
+  });
+  
   next();
 }
 

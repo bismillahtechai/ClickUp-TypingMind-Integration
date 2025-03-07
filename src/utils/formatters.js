@@ -4,76 +4,118 @@
  * for an AI assistant to use as context
  */
 
+const { getLogger } = require('./logger');
+const logger = getLogger('formatters');
+
 /**
  * Main formatter function that dispatches to specific formatters based on data type
  */
 function formatResponseForTypingMind(data, dataType) {
+  logger.debug(`Formatting ${dataType} data for TypingMind`);
+  
+  if (!data) {
+    logger.warn(`No data provided for formatting (dataType: ${dataType})`);
+    return [];
+  }
+  
+  let result;
   switch (dataType) {
     case 'tasks':
-      return formatTasksForTypingMind(data);
+      result = formatTasksForTypingMind(data);
+      break;
     case 'spaces':
-      return formatSpacesForTypingMind(data);
+      result = formatSpacesForTypingMind(data);
+      break;
     case 'lists':
-      return formatListsForTypingMind(data);
+      result = formatListsForTypingMind(data);
+      break;
     case 'folders':
-      return formatFoldersForTypingMind(data);
+      result = formatFoldersForTypingMind(data);
+      break;
     case 'comments':
-      return formatCommentsForTypingMind(data);
+      result = formatCommentsForTypingMind(data);
+      break;
     default:
-      return formatGenericForTypingMind(data, dataType);
+      logger.warn(`Unknown data type: ${dataType}, using generic formatter`);
+      result = formatGenericForTypingMind(data, dataType);
   }
+  
+  logger.info(`Formatted ${result.length} ${dataType} items for TypingMind`);
+  return result;
 }
 
 /**
  * Format task data for TypingMind
  */
 function formatTasksForTypingMind(data) {
-  if (!data.tasks) {
-    return { text: 'No tasks found.' };
+  logger.debug('Starting task formatting');
+  
+  // Handle both formats that ClickUp might return
+  const tasks = data.tasks || data || [];
+  
+  if (!Array.isArray(tasks)) {
+    logger.warn('Tasks data is not in expected format', { 
+      type: typeof tasks, 
+      isTasksProperty: !!data.tasks 
+    });
+    return [];
   }
-
-  const tasks = data.tasks;
-  let formattedText = 'Recent ClickUp Tasks:\n\n';
-
-  tasks.forEach((task, index) => {
-    formattedText += `${index + 1}. Task: ${task.name}\n`;
-    formattedText += `   ID: ${task.id}\n`;
-    formattedText += `   Status: ${task.status.status || 'No status'}\n`;
-    
-    if (task.due_date) {
-      const dueDate = new Date(parseInt(task.due_date));
-      formattedText += `   Due: ${dueDate.toLocaleDateString()}\n`;
-    }
-    
-    if (task.description) {
-      // Truncate description if it's too long and remove markdown formatting
-      const cleanDescription = task.description
-        .replace(/\*\*/g, '')
-        .replace(/\*/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/#{1,6}\s?/g, '');
+  
+  logger.debug(`Processing ${tasks.length} tasks`);
+  
+  // Map tasks to a format suitable for context
+  const formattedTasks = tasks.map(task => {
+    try {
+      // Extract status
+      const status = task.status ? {
+        status: task.status.status,
+        color: task.status.color,
+        type: task.status.type
+      } : { status: 'Unknown' };
       
-      const truncatedDescription = cleanDescription.length > 100 
-        ? cleanDescription.substring(0, 100) + '...' 
-        : cleanDescription;
+      // Extract assignees
+      const assignees = Array.isArray(task.assignees) ? 
+        task.assignees.map(a => ({ 
+          id: a.id, 
+          username: a.username,
+          email: a.email,
+          profilePicture: a.profilePicture
+        })) : [];
       
-      formattedText += `   Description: ${truncatedDescription}\n`;
+      // Format the task
+      return {
+        id: task.id,
+        name: task.name,
+        description: task.description || '',
+        status: status,
+        priority: task.priority ? {
+          priority: task.priority.priority,
+          color: task.priority.color
+        } : null,
+        timeEstimate: task.time_estimate,
+        timeSpent: task.time_spent,
+        createdAt: new Date(task.date_created).toISOString(),
+        updatedAt: new Date(task.date_updated).toISOString(),
+        dueDate: task.due_date ? new Date(task.due_date).toISOString() : null,
+        startDate: task.start_date ? new Date(task.start_date).toISOString() : null,
+        assignees: assignees,
+        tags: task.tags || [],
+        url: task.url
+      };
+    } catch (error) {
+      logger.error(`Error formatting task ${task.id || 'unknown'}`, { error: error.stack });
+      
+      // Return a simplified version if there's an error
+      return {
+        id: task.id || 'unknown',
+        name: task.name || 'Unknown task',
+        error: 'Error formatting task data'
+      };
     }
-    
-    if (task.assignees && task.assignees.length > 0) {
-      const assigneeNames = task.assignees.map(a => a.username || a.email).join(', ');
-      formattedText += `   Assigned to: ${assigneeNames}\n`;
-    }
-    
-    if (task.tags && task.tags.length > 0) {
-      const tagNames = task.tags.map(t => t.name).join(', ');
-      formattedText += `   Tags: ${tagNames}\n`;
-    }
-    
-    formattedText += '\n';
   });
-
-  return { text: formattedText };
+  
+  logger.debug(`Formatted ${formattedTasks.length} tasks successfully`);
+  return formattedTasks;
 }
 
 /**

@@ -319,6 +319,44 @@ MIT
 
 ## Troubleshooting & Maintenance
 
+### Enhanced Logging
+
+This application includes a comprehensive logging system designed to help diagnose issues with the ClickUp-TypingMind integration:
+
+1. **Log Levels**: The application supports different log levels:
+   - `ERROR`: Only critical errors
+   - `WARN`: Warnings and errors
+   - `INFO`: General information plus warnings and errors
+   - `DEBUG`: Detailed information for debugging
+   - `TRACE`: Very verbose logging
+
+2. **Request Tracking**: Each request receives a unique ID that is logged across all operations related to that request.
+
+3. **ClickUp API Logging**: All interactions with the ClickUp API are carefully logged, including:
+   - Request details (with sensitive information masked)
+   - Response status and timing
+   - Error details when failures occur
+
+4. **Contextual Information**: All logs include contextual information such as:
+   - Timestamp
+   - Log level
+   - Module/component
+   - Request ID (when available)
+   - Additional metadata relevant to the operation
+
+5. **Configuring Log Level**: Set the desired log level in the environment variables:
+   ```
+   LOG_LEVEL=info  # Options: error, warn, info, debug, trace
+   ```
+
+Example log output:
+```
+[2023-05-16T12:34:56.789Z][INFO][server] Server is running on port 3000
+[2023-05-16T12:35:01.123Z][INFO][http][req:a1b2c3] HTTP GET /context/clickup
+[2023-05-16T12:35:01.456Z][DEBUG][clickup-service][req:a1b2c3] API Request: GET https://api.clickup.com/api/v2/team/12345/task
+[2023-05-16T12:35:01.789Z][INFO][http][req:a1b2c3] HTTP Response: 200 (332ms)
+```
+
 ### Common Issues
 
 1. **Authentication Failures**:
