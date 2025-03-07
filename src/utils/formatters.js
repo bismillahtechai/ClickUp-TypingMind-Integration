@@ -15,37 +15,154 @@ function formatResponseForTypingMind(data, dataType) {
   
   if (!data) {
     logger.warn(`No data provided for formatting (dataType: ${dataType})`);
-    return [];
+    return { text: `No ${dataType} data available.` };
   }
   
-  let result;
+  let formattedData;
   switch (dataType) {
     case 'tasks':
-      result = formatTasksForTypingMind(data);
+      formattedData = formatTasksForTypingMind(data);
       break;
     case 'spaces':
-      result = formatSpacesForTypingMind(data);
+      formattedData = formatSpacesForTypingMind(data);
       break;
     case 'lists':
-      result = formatListsForTypingMind(data);
+      formattedData = formatListsForTypingMind(data);
       break;
     case 'folders':
-      result = formatFoldersForTypingMind(data);
+      formattedData = formatFoldersForTypingMind(data);
       break;
     case 'comments':
-      result = formatCommentsForTypingMind(data);
+      formattedData = formatCommentsForTypingMind(data);
       break;
     default:
       logger.warn(`Unknown data type: ${dataType}, using generic formatter`);
-      result = formatGenericForTypingMind(data, dataType);
+      formattedData = formatGenericForTypingMind(data, dataType);
   }
   
-  logger.info(`Formatted ${result.length} ${dataType} items for TypingMind`);
-  return result;
+  // Convert the structured data to a text format for TypingMind context
+  const context = convertToTypingMindContext(formattedData, dataType);
+  
+  logger.info(`Formatted ${dataType} items for TypingMind context (${context.text.length} chars)`);
+  return context;
 }
 
 /**
- * Format task data for TypingMind
+ * Convert structured data to text format for TypingMind context
+ */
+function convertToTypingMindContext(data, dataType) {
+  try {
+    if (!Array.isArray(data)) {
+      return { text: `No ${dataType} data available.` };
+    }
+    
+    if (data.length === 0) {
+      return { text: `No ${dataType} found.` };
+    }
+    
+    let formattedText = `ClickUp ${dataType.charAt(0).toUpperCase() + dataType.slice(1)}:\n\n`;
+    
+    switch (dataType) {
+      case 'tasks':
+        data.forEach((task, index) => {
+          formattedText += `${index + 1}. Task: ${task.name}\n`;
+          formattedText += `   ID: ${task.id}\n`;
+          
+          if (task.status && task.status.status) {
+            formattedText += `   Status: ${task.status.status}\n`;
+          }
+          
+          if (task.dueDate) {
+            formattedText += `   Due: ${task.dueDate}\n`;
+          }
+          
+          if (task.description) {
+            // Truncate description if it's too long and remove markdown formatting
+            const cleanDescription = task.description
+              .replace(/\*\*/g, '')
+              .replace(/\*/g, '')
+              .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+              .replace(/#{1,6}\s?/g, '');
+            
+            const truncatedDescription = cleanDescription.length > 100 
+              ? cleanDescription.substring(0, 100) + '...' 
+              : cleanDescription;
+            
+            formattedText += `   Description: ${truncatedDescription}\n`;
+          }
+          
+          if (task.assignees && task.assignees.length > 0) {
+            const assigneeNames = task.assignees
+              .map(a => a.username || a.email || 'Unknown user')
+              .join(', ');
+            
+            formattedText += `   Assigned to: ${assigneeNames}\n`;
+          }
+          
+          if (task.tags && task.tags.length > 0) {
+            const tagNames = task.tags
+              .map(t => t.name || t)
+              .join(', ');
+            
+            formattedText += `   Tags: ${tagNames}\n`;
+          }
+          
+          formattedText += '\n';
+        });
+        break;
+        
+      case 'spaces':
+        data.forEach((space, index) => {
+          formattedText += `${index + 1}. Space: ${space.name}\n`;
+          formattedText += `   ID: ${space.id}\n`;
+          
+          if (space.statuses && space.statuses.length > 0) {
+            const statusNames = space.statuses.map(s => s.name).join(', ');
+            formattedText += `   Statuses: ${statusNames}\n`;
+          }
+          
+          formattedText += '\n';
+        });
+        break;
+        
+      case 'lists':
+        data.forEach((list, index) => {
+          formattedText += `${index + 1}. List: ${list.name}\n`;
+          formattedText += `   ID: ${list.id}\n`;
+          
+          if (list.status) {
+            formattedText += `   Status: ${list.status}\n`;
+          }
+          
+          formattedText += '\n';
+        });
+        break;
+        
+      case 'folders':
+        data.forEach((folder, index) => {
+          formattedText += `${index + 1}. Folder: ${folder.name}\n`;
+          formattedText += `   ID: ${folder.id}\n`;
+          formattedText += '\n';
+        });
+        break;
+        
+      default:
+        data.forEach((item, index) => {
+          formattedText += `${index + 1}. Item: ${item.name || 'Unknown'}\n`;
+          formattedText += `   ID: ${item.id || 'No ID'}\n`;
+          formattedText += '\n';
+        });
+    }
+    
+    return { text: formattedText };
+  } catch (error) {
+    logger.error(`Error converting to TypingMind context: ${error.message}`, { error: error.stack });
+    return { text: `Error formatting ${dataType} data: ${error.message}` };
+  }
+}
+
+/**
+ * Format tasks data for TypingMind
  */
 function formatTasksForTypingMind(data) {
   logger.debug('Starting task formatting');
@@ -66,49 +183,92 @@ function formatTasksForTypingMind(data) {
   // Map tasks to a format suitable for context
   const formattedTasks = tasks.map(task => {
     try {
-      // Extract status
-      const status = task.status ? {
-        status: task.status.status,
-        color: task.status.color,
-        type: task.status.type
-      } : { status: 'Unknown' };
+      // Safe date conversion function
+      const safeDate = (timestamp) => {
+        if (!timestamp) return null;
+        try {
+          // Handle both string timestamps and numeric timestamps
+          const date = typeof timestamp === 'string' 
+            ? new Date(timestamp) 
+            : new Date(parseInt(timestamp));
+          
+          // Check if date is valid
+          return !isNaN(date.getTime()) ? date.toISOString() : null;
+        } catch (e) {
+          return null;
+        }
+      };
       
-      // Extract assignees
-      const assignees = Array.isArray(task.assignees) ? 
-        task.assignees.map(a => ({ 
-          id: a.id, 
-          username: a.username,
-          email: a.email,
-          profilePicture: a.profilePicture
-        })) : [];
+      // Safe property access function
+      const get = (obj, path, defaultValue = null) => {
+        try {
+          const parts = path.split('.');
+          let current = obj;
+          
+          for (const part of parts) {
+            if (current === null || current === undefined) {
+              return defaultValue;
+            }
+            current = current[part];
+          }
+          
+          return current === undefined ? defaultValue : current;
+        } catch (e) {
+          return defaultValue;
+        }
+      };
       
-      // Format the task
+      // Extract status - now with safer property access
+      const status = {
+        status: get(task, 'status.status', 'Unknown'),
+        color: get(task, 'status.color'),
+        type: get(task, 'status.type')
+      };
+      
+      // Extract assignees with safer handling
+      let assignees = [];
+      if (Array.isArray(task.assignees)) {
+        assignees = task.assignees.map(a => ({
+          id: get(a, 'id'),
+          username: get(a, 'username'),
+          email: get(a, 'email'),
+          profilePicture: get(a, 'profilePicture')
+        }));
+      }
+      
+      // Get priority safely
+      const priority = task.priority ? {
+        priority: get(task, 'priority.priority'),
+        color: get(task, 'priority.color')
+      } : null;
+      
+      // Format the task with safer property access
       return {
-        id: task.id,
-        name: task.name,
-        description: task.description || '',
+        id: get(task, 'id', 'unknown-id'),
+        name: get(task, 'name', 'Unnamed Task'),
+        description: get(task, 'description', ''),
         status: status,
-        priority: task.priority ? {
-          priority: task.priority.priority,
-          color: task.priority.color
-        } : null,
-        timeEstimate: task.time_estimate,
-        timeSpent: task.time_spent,
-        createdAt: new Date(task.date_created).toISOString(),
-        updatedAt: new Date(task.date_updated).toISOString(),
-        dueDate: task.due_date ? new Date(task.due_date).toISOString() : null,
-        startDate: task.start_date ? new Date(task.start_date).toISOString() : null,
+        priority: priority,
+        timeEstimate: get(task, 'time_estimate'),
+        timeSpent: get(task, 'time_spent'),
+        createdAt: safeDate(get(task, 'date_created')),
+        updatedAt: safeDate(get(task, 'date_updated')),
+        dueDate: safeDate(get(task, 'due_date')),
+        startDate: safeDate(get(task, 'start_date')),
         assignees: assignees,
-        tags: task.tags || [],
-        url: task.url
+        tags: Array.isArray(get(task, 'tags')) ? get(task, 'tags') : [],
+        url: get(task, 'url')
       };
     } catch (error) {
-      logger.error(`Error formatting task ${task.id || 'unknown'}`, { error: error.stack });
+      logger.error(`Error formatting task ${get(task, 'id', 'unknown')}`, { 
+        error: error.stack,
+        task: JSON.stringify(task).substring(0, 200) + '...' // Log part of the task for debugging
+      });
       
       // Return a simplified version if there's an error
       return {
-        id: task.id || 'unknown',
-        name: task.name || 'Unknown task',
+        id: get(task, 'id', 'unknown'),
+        name: get(task, 'name', 'Unknown task'),
         error: 'Error formatting task data'
       };
     }
@@ -116,6 +276,25 @@ function formatTasksForTypingMind(data) {
   
   logger.debug(`Formatted ${formattedTasks.length} tasks successfully`);
   return formattedTasks;
+}
+
+// Helper function to safely access nested properties
+function get(obj, path, defaultValue = null) {
+  try {
+    const parts = path.split('.');
+    let current = obj;
+    
+    for (const part of parts) {
+      if (current === null || current === undefined) {
+        return defaultValue;
+      }
+      current = current[part];
+    }
+    
+    return current === undefined ? defaultValue : current;
+  } catch (e) {
+    return defaultValue;
+  }
 }
 
 /**
