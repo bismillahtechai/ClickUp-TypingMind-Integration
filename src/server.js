@@ -198,6 +198,151 @@ app.get('/context/clickup', validateApiKey, async (req, res) => {
   }
 });
 
+// Comprehensive Dynamic Context endpoint that aggregates multiple data types
+app.get('/context/clickup-all', validateApiKey, async (req, res) => {
+  try {
+    // Extract parameters from headers with query params as fallback
+    const workspaceId = req.headers['x-workspace-id'] || req.query.workspaceId || process.env.DEFAULT_WORKSPACE_ID;
+    const dataTypes = (req.headers['x-data-types'] || req.query.dataTypes || 'tasks,lists,spaces').split(',');
+    const limit = parseInt(req.headers['x-limit'] || req.query.limit || '10', 10);
+    const lastUserMessage = req.headers['x-last-user-message'] || '';
+    const userId = req.headers['x-user-id'] || req.query.userId || 'default';
+    
+    logger.info('Comprehensive context endpoint called', { 
+      workspaceId, 
+      dataTypes: dataTypes.join(','), 
+      limit,
+      userId,
+      requestId: req.requestId,
+      hasLastUserMessage: !!lastUserMessage
+    });
+    
+    if (!workspaceId) {
+      logger.warn('Missing workspace ID for context endpoint', { requestId: req.requestId });
+      return res.status(400).json({ error: 'workspaceId is required in headers or query params' });
+    }
+
+    // Get data from our ClickUp service
+    const clickupService = require('./services/clickup.service');
+    const contextualizedQuery = lastUserMessage ? { query: lastUserMessage } : {};
+    
+    // Results object to store all data
+    const results = {};
+    
+    // Process each requested data type
+    await Promise.all(dataTypes.map(async (dataType) => {
+      try {
+        dataType = dataType.trim(); // Remove any whitespace
+        logger.debug(`Fetching ClickUp data for ${dataType}`, { 
+          workspaceId, 
+          limit, 
+          requestId: req.requestId 
+        });
+        
+        let data;
+        switch (dataType) {
+          case 'tasks':
+            data = await clickupService.getRecentTasks(workspaceId, userId, limit, contextualizedQuery);
+            break;
+          case 'spaces':
+            data = await clickupService.getSpaces(workspaceId, userId);
+            break;
+          case 'lists':
+            // For lists, we need to get spaces first and then get lists for each space
+            const spaces = await clickupService.getSpaces(workspaceId, userId);
+            if (spaces && spaces.spaces) {
+              // Get the first few spaces based on limit
+              const limitedSpaces = spaces.spaces.slice(0, limit);
+              const spaceListsPromises = limitedSpaces.map(space => 
+                clickupService.getFolderlessLists(space.id, userId)
+              );
+              const spacesLists = await Promise.all(spaceListsPromises);
+              // Combine all lists from all spaces
+              data = { lists: [] };
+              spacesLists.forEach(spaceList => {
+                if (spaceList && spaceList.lists) {
+                  data.lists = [...data.lists, ...spaceList.lists];
+                }
+              });
+            } else {
+              data = { lists: [] };
+            }
+            break;
+          case 'folders':
+            // Similar to lists, get spaces first and then folders for each space
+            const spacesForFolders = await clickupService.getSpaces(workspaceId, userId);
+            if (spacesForFolders && spacesForFolders.spaces) {
+              const limitedSpaces = spacesForFolders.spaces.slice(0, limit);
+              const spaceFoldersPromises = limitedSpaces.map(space => 
+                clickupService.getFolders(space.id, userId)
+              );
+              const spacesFolders = await Promise.all(spaceFoldersPromises);
+              // Combine all folders from all spaces
+              data = { folders: [] };
+              spacesFolders.forEach(spaceFolder => {
+                if (spaceFolder && spaceFolder.folders) {
+                  data.folders = [...data.folders, ...spaceFolder.folders];
+                }
+              });
+            } else {
+              data = { folders: [] };
+            }
+            break;
+          default:
+            logger.warn(`Unknown data type: ${dataType}, skipping`, { requestId: req.requestId });
+            return;
+        }
+        
+        // Format the data for this data type
+        const formattedData = formatResponseForTypingMind(data, dataType);
+        
+        // Add to results
+        results[dataType] = formattedData;
+        
+        logger.info(`Fetched and formatted ${dataType} data`, { 
+          dataType, 
+          resultSize: JSON.stringify(formattedData).length,
+          requestId: req.requestId 
+        });
+      } catch (error) {
+        logger.error(`Error fetching ${dataType} from ClickUp`, { 
+          error: error.stack, 
+          dataType,
+          workspaceId,
+          requestId: req.requestId
+        });
+        // Still add error information to results
+        results[dataType] = { 
+          text: `Error fetching ${dataType}: ${error.message}`,
+          error: true
+        };
+      }
+    }));
+    
+    // Combine all formatted data into one comprehensive response
+    const { formatters } = require('./utils/formatters');
+    const comprehensiveResponse = formatters.combineFormattedResponses(results);
+    
+    logger.info('Comprehensive context successfully provided', { 
+      dataTypes: dataTypes.join(','),
+      responseSize: JSON.stringify(comprehensiveResponse).length,
+      requestId: req.requestId 
+    });
+    
+    res.status(200).json(comprehensiveResponse);
+  } catch (error) {
+    logger.error('Unhandled error in comprehensive context endpoint', { 
+      error: error.stack,
+      requestId: req.requestId
+    });
+    
+    res.status(500).json({ 
+      error: 'Failed to fetch ClickUp data',
+      message: error.message 
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   logger.error('Unhandled server error', { 

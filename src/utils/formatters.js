@@ -414,6 +414,69 @@ function formatGenericForTypingMind(data, dataType) {
   return { text: formattedText };
 }
 
+/**
+ * Combine multiple formatted responses into a single comprehensive response
+ */
+function combineFormattedResponses(results) {
+  logger.debug('Combining multiple formatted responses');
+  
+  try {
+    // Extract text content from each result
+    let combinedText = "ClickUp Workspace Overview:\n\n";
+    
+    // Get all the data types that were successfully retrieved
+    const dataTypes = Object.keys(results);
+    
+    if (dataTypes.length === 0) {
+      return { text: "No ClickUp data available." };
+    }
+    
+    // Process each data type and add it to the combined text
+    dataTypes.forEach(dataType => {
+      const result = results[dataType];
+      
+      // Skip if there's no result or it has an error
+      if (!result || result.error) {
+        return;
+      }
+      
+      // Extract the text content, skipping the header
+      let textContent = result.text || '';
+      
+      // Strip the header (first line) and add our own section header
+      if (textContent.includes('\n\n')) {
+        textContent = textContent.split('\n\n').slice(1).join('\n\n');
+      }
+      
+      // Add section header for this data type
+      combinedText += `== ${dataType.toUpperCase()} ==\n\n`;
+      combinedText += textContent;
+      
+      // Add a separator between sections
+      combinedText += '\n\n';
+    });
+    
+    // Check if we actually have any content
+    if (combinedText === "ClickUp Workspace Overview:\n\n") {
+      return { text: "No ClickUp data available." };
+    }
+    
+    // Add a summary at the end
+    combinedText += `== SUMMARY ==\n\n`;
+    combinedText += `This overview includes information from ${dataTypes.join(', ')}.\n`;
+    combinedText += `Use this information as context for your responses about ClickUp projects and tasks.\n\n`;
+    
+    logger.info(`Combined ${dataTypes.length} data types into comprehensive response`);
+    return { text: combinedText };
+  } catch (error) {
+    logger.error(`Error combining formatted responses: ${error.message}`, { error: error.stack });
+    return { text: "Error combining ClickUp data: " + error.message };
+  }
+}
+
 module.exports = {
-  formatResponseForTypingMind
+  formatResponseForTypingMind,
+  formatters: {
+    combineFormattedResponses
+  }
 }; 
